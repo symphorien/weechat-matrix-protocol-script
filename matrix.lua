@@ -61,7 +61,7 @@ local WEECHAT_VERSION
 local SERVER
 local STDOUT = {}
 local OUT = {}
-local BUFFER
+local BUFFER = nil
 local Room
 local MatrixServer
 local Olm
@@ -513,7 +513,8 @@ function real_http_cb(extra, command, rc, stdout, stderr)
             perr(('Invalid http request: %s'):format(stdout))
             return w.WEECHAT_RC_OK
         end
-        if status_code == 504 and command:find'/sync' then -- keep hammering to try to get in as the server will keep slowly generating the response
+        if status_code == 504 and extra == "initial" then -- keep hammering to try to get in as the server will keep slowly generating the response
+            perr('retrying initial sync after 504')
             SERVER:initial_sync()
             return w.WEECHAT_RC_OK
         end
@@ -1172,17 +1173,19 @@ function MatrixServer:connect()
 end
 
 function MatrixServer:initial_sync()
-    BUFFER = w.buffer_new(SCRIPT_NAME, "", "", "closed_matrix_buffer_cb", "")
-    w.buffer_set(BUFFER, "short_name", SCRIPT_NAME)
-    w.buffer_set(BUFFER, "name", SCRIPT_NAME)
-    w.buffer_set(BUFFER, "localvar_set_type", "server")
-    w.buffer_set(BUFFER, "localvar_set_server", SCRIPT_NAME)
-    w.buffer_set(BUFFER, "title", ("Matrix: %s"):format(
-        w.config_get_plugin'homeserver_url'))
-    if w.config_string(w.config_get('irc.look.server_buffer')) == 'merge_with_core' then
-        w.buffer_merge(BUFFER, w.buffer_search_main())
+    if BUFFER == nil then
+        BUFFER = w.buffer_new(SCRIPT_NAME, "", "", "closed_matrix_buffer_cb", "")
+        w.buffer_set(BUFFER, "short_name", SCRIPT_NAME)
+        w.buffer_set(BUFFER, "name", SCRIPT_NAME)
+        w.buffer_set(BUFFER, "localvar_set_type", "server")
+        w.buffer_set(BUFFER, "localvar_set_server", SCRIPT_NAME)
+        w.buffer_set(BUFFER, "title", ("Matrix: %s"):format(
+            w.config_get_plugin'homeserver_url'))
+        if w.config_string(w.config_get('irc.look.server_buffer')) == 'merge_with_core' then
+            w.buffer_merge(BUFFER, w.buffer_search_main())
+        end
+        w.buffer_set(BUFFER, "display", "auto")
     end
-    w.buffer_set(BUFFER, "display", "auto")
     local data = urllib.urlencode({
         access_token = self.access_token,
         timeout = 1000*POLL_INTERVAL,
